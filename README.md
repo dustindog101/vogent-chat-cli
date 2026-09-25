@@ -35,4 +35,4 @@ This tests typed conversation behavior. It does not test phone audio, speech rec
 
 ## Status
 
-The CLI syntax and local startup paths are checked before release. A live chat requires a Vogent credential and is deliberately not part of this repository's public verification.
+CLI syntax, help output, argument errors, and skill structure passed local checks. The Vogent API and a live chat have not been verified for this public copy; those checks require a credential and can create a chat record or invoke linked functions.
