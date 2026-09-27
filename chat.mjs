@@ -14,7 +14,24 @@ const CHAT_QUERY = `subscription RunChatMessage($input: RunChatQueryInput!) {
   runChatQueryStream(input: $input) {
     messageType
     text
-    transcriptLine { role text }
+    transcriptLine {
+      role
+      text
+      functionCalls { id name arguments }
+      nodeTransitionResult { fromNodeId toNodeId result }
+    }
+  }
+}`;
+
+const CHAT_READ_QUERY = `query ReadAiChat($id: ID!) {
+  aiChat(id: $id) {
+    id
+    transcript {
+      role
+      text
+      functionCalls { id name arguments }
+      nodeTransitionResult { fromNodeId toNodeId result }
+    }
   }
 }`;
 
@@ -32,22 +49,49 @@ function credential() {
 }
 
 function options(argv) {
-  const result = { agent: null, messages: [], list: false, inspect: false, allowLive: false };
+  const result = {
+    agent: null,
+    messages: [],
+    list: false,
+    inspect: false,
+    allowLive: false,
+    chatId: null,
+    transcript: false,
+    json: false,
+  };
+
   for (let i = 0; i < argv.length; i++) {
-    if (['--agent', '--agent-id'].includes(argv[i]) && argv[i + 1]) result.agent = argv[++i];
-    else if (argv[i] === '--message' && argv[i + 1]) result.messages.push(argv[++i]);
-    else if (argv[i] === '--list') result.list = true;
-    else if (argv[i] === '--inspect') result.inspect = true;
-    else if (argv[i] === '--allow-live') result.allowLive = true;
-    else if (argv[i] === '--help') {
-      console.log('Usage: node chat.mjs [--list] [--agent ID|NAME] [--inspect] [--message TEXT ...] [--allow-live]');
-      console.log('Without --agent, choose from a numbered menu. Without --message, type turns interactively; /quit ends the chat.');
-      console.log('--inspect reads the selected agent without creating a chat. --allow-live permits a chat that may invoke live functions.');
+    const arg = argv[i];
+    if (['--agent', '--agent-id'].includes(arg) && argv[i + 1]) result.agent = argv[++i];
+    else if (arg === '--message' && argv[i + 1]) result.messages.push(argv[++i]);
+    else if (arg === '--list') result.list = true;
+    else if (arg === '--inspect') result.inspect = true;
+    else if (arg === '--allow-live') result.allowLive = true;
+    else if (['--chat-id', '--get', 'get'].includes(arg) && argv[i + 1]) result.chatId = argv[++i];
+    else if (arg === '--transcript' || arg === '--history') result.transcript = true;
+    else if (arg === '--json') result.json = true;
+    else if (arg === '--help' || arg === '-h') {
+      console.log('Usage: node chat.mjs [OPTIONS]');
+      console.log('\nChat & Testing:');
+      console.log('  node chat.mjs [--agent ID|NAME] [--message TEXT ...] [--transcript] [--allow-live]');
+      console.log('  Without --agent, choose from a numbered menu. Without --message, type turns interactively; /quit ends.');
+      console.log('  Multiple --message flags execute multi-turn conversations sequentially and display responses.');
+      console.log('\nChat History & Transcripts:');
+      console.log('  node chat.mjs --chat-id CHAT_ID [--json]');
+      console.log('  Displays full transcript logs, roles, and function/tool calls for any existing chat session.');
+      console.log('\nAgent Info:');
+      console.log('  node chat.mjs --list');
+      console.log('  node chat.mjs --agent ID|NAME --inspect');
       process.exit(0);
-    } else throw new Error(`Unknown or incomplete argument: ${argv[i]}`);
+    } else throw new Error(`Unknown or incomplete argument: ${arg}`);
   }
-  if (result.list && (result.inspect || result.messages.length)) throw new Error('--list cannot be combined with --inspect or --message.');
-  if (result.inspect && result.messages.length) throw new Error('--inspect cannot be combined with --message.');
+
+  if (result.list && (result.inspect || result.messages.length || result.chatId)) {
+    throw new Error('--list cannot be combined with other execution flags.');
+  }
+  if (result.inspect && result.messages.length) {
+    throw new Error('--inspect cannot be combined with --message.');
+  }
   return result;
 }
 
@@ -144,6 +188,37 @@ async function createChat(agentId, token) {
   return id;
 }
 
+async function readChat(chatId, token) {
+  const body = await jsonRequest('/query', token, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: CHAT_READ_QUERY, variables: { id: chatId } }),
+  });
+  const chat = body.data?.aiChat;
+  if (!chat) throw new Error(`Vogent returned no chat record for ID: ${chatId}`);
+  return chat;
+}
+
+function formatTranscript(transcript) {
+  if (!Array.isArray(transcript) || !transcript.length) return '  (No transcript lines recorded)';
+  const lines = [];
+  transcript.forEach((entry, i) => {
+    const roleTag = entry.role === 'HUMAN' ? 'You' : 'Agent';
+    if (entry.text) {
+      lines.push(`  [${i + 1}] ${roleTag}: ${entry.text}`);
+    }
+    if (Array.isArray(entry.functionCalls) && entry.functionCalls.length > 0) {
+      for (const fn of entry.functionCalls) {
+        lines.push(`      ⚡ Function Call: ${fn.name}(${fn.arguments || ''})`);
+      }
+    }
+    if (entry.nodeTransitionResult) {
+      lines.push(`      ↪ Transition: ${JSON.stringify(entry.nodeTransitionResult)}`);
+    }
+  });
+  return lines.join('\n');
+}
+
 function sendTurn(chatId, text, token) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket('wss://api.vogent.ai/query', ['graphql-transport-ws']);
@@ -193,10 +268,28 @@ function sendTurn(chatId, text, token) {
 
 async function main() {
   const args = options(process.argv.slice(2));
-  if (!args.list && !args.inspect && !args.messages.length && !process.stdin.isTTY) {
-    throw new Error('Interactive chat requires a terminal. Use --message for scripted turns.');
-  }
   const token = credential();
+
+  // Mode 1: Fetch Chat History / Transcript Log by Chat ID
+  if (args.chatId) {
+    const chat = await readChat(args.chatId, token);
+    if (args.json) {
+      console.log(JSON.stringify(chat, null, 2));
+      return;
+    }
+    console.log(`\n=== Full Chat Transcript Log ===`);
+    console.log(`Chat ID: ${chat.id}`);
+    console.log(`Total Entries: ${chat.transcript?.length || 0}`);
+    console.log('--------------------------------');
+    console.log(formatTranscript(chat.transcript));
+    console.log('================================\n');
+    return;
+  }
+
+  if (!args.list && !args.inspect && !args.messages.length && !process.stdin.isTTY) {
+    throw new Error('Interactive chat requires a terminal. Use --message for scripted turns or --chat-id to view history.');
+  }
+
   const [agents, phones] = await Promise.all([
     getPages('/api/agents', token), getPages('/api/phone_numbers', token),
   ]);
@@ -225,22 +318,44 @@ async function main() {
     console.log(`Chat ID: ${chatId}`);
 
     if (args.messages.length) {
-      for (const message of args.messages) {
-        console.log(`You: ${message}`);
-        console.log(`Agent: ${await sendTurn(chatId, message, token)}`);
+      for (let i = 0; i < args.messages.length; i++) {
+        const message = args.messages[i];
+        console.log(`\n[Turn ${i + 1}] You: ${message}`);
+        const response = await sendTurn(chatId, message, token);
+        console.log(`[Turn ${i + 1}] Agent: ${response}`);
+      }
+
+      if (args.transcript) {
+        const chat = await readChat(chatId, token);
+        console.log(`\n=== Full Session Transcript & Tool Logs ===`);
+        console.log(formatTranscript(chat.transcript));
+        console.log(`===========================================\n`);
       }
       return;
     }
 
+    let turn = 1;
     while (true) {
-      const message = (await input.question('You (/quit to end): ')).trim();
+      const message = (await input.question(`\n[Turn ${turn}] You (/quit to end): `)).trim();
       if (message === '/quit') break;
       if (!message) continue;
-      console.log(`Agent: ${await sendTurn(chatId, message, token)}`);
+      const response = await sendTurn(chatId, message, token);
+      console.log(`[Turn ${turn}] Agent: ${response}`);
+      turn++;
+    }
+
+    if (args.transcript) {
+      const chat = await readChat(chatId, token);
+      console.log(`\n=== Full Session Transcript & Tool Logs ===`);
+      console.log(formatTranscript(chat.transcript));
+      console.log(`===========================================\n`);
     }
   } finally {
     input?.close();
   }
 }
 
-main().catch(error => { console.error(error.message); process.exitCode = 1; });
+main().catch(error => {
+  console.error(error.message);
+  process.exit(1);
+});

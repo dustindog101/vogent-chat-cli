@@ -1,38 +1,184 @@
-# Vogent chat CLI and Codex skill
+# Vogent Chat CLI and Agent Skill
 
-This repository contains a dependency-free Node.js CLI for typed conversations with Vogent agents and a `SKILL.md` that guides Codex through using it. This public copy removes a project-specific staging shortcut, so every chat requires an explicit confirmation or `--allow-live`.
+A dependency-free Node.js CLI and AI agent skill for typed conversations, agent inspection, scripted multi-turn evaluation, and transcript log retrieval with [Vogent](https://vogent.ai) AI voice and chat agents over WebSocket (`graphql-transport-ws`).
 
-## Requirements and setup
+---
 
-- Node.js 22 or newer, with built-in `fetch` and `WebSocket`.
-- A Vogent API key available as `VOGENT_API_KEY` or in an untracked `.env.local` file beside `chat.mjs` containing `VOGENT_API_KEY=...`.
+## Features
 
-Do not commit `.env.local` or include a key in command arguments. The CLI makes requests to `api.vogent.ai` and its GraphQL WebSocket endpoint.
+- **Zero External Dependencies**: Pure Node.js (v22+) utilizing native `fetch`, `WebSocket`, and `readline/promises`.
+- **Account & Agent Inspection**: List all agents and inspect active versioned prompts, flow node counts, phone linkage, and linked backend API endpoints without starting a chat.
+- **Interactive Multi-Turn Chat**: Real-time terminal dialogue with any agent (`/quit` to exit).
+- **Deterministic Scripted Conversations**: Chain sequential user turns using multiple `--message` flags to run automated regression dials.
+- **Full Transcripts & Tool Execution Traces**: View full conversation history, assistant messages, tool/function calls (such as `commit_answer` or backend API calls), and node transition results using `--transcript` or `--chat-id <ID>`.
+- **Machine-Readable Exports**: Dump complete transcript payloads in raw JSON using `--json`.
+- **Live Safety Guard**: Enforces explicit confirmation or the `--allow-live` flag before executing against phone-linked or live agents.
+- **Configurable Timeouts**: Adjust per-turn WebSocket response deadlines via `VOGENT_CHAT_TIMEOUT_MS`.
+- **Ready-to-Use Agent Skill**: Bundled `SKILL.md` allows any AI coding agent (Antigravity, Codex, Claude Code, Cursor) to self-onboard, prompt for credentials, and run evaluations autonomously.
 
-To install the Codex skill, clone this repository into your skills directory:
+---
 
-```sh
-git clone https://github.com/dustindog101/vogent-chat-cli.git ~/.codex/skills/vogent-chat
+## Requirements and Setup
+
+### 1. Prerequisites
+- **Node.js**: v22 or newer (uses native `fetch` and `WebSocket`).
+- **Vogent API Key**: A valid bearer token for `api.vogent.ai`.
+
+### 2. Configuration
+The CLI reads credentials from the `VOGENT_API_KEY` environment variable or an untracked `.env.local` file placed beside `chat.mjs`:
+
+```bash
+# Option A: Save to local untracked file (recommended)
+echo "VOGENT_API_KEY=your_vogent_api_key_here" >> .env.local
+
+# Option B: Export environment variable
+export VOGENT_API_KEY="your_vogent_api_key_here"
 ```
 
-The repository root is the skill folder, so Codex can load `SKILL.md` and run the adjacent `chat.mjs`. You can also clone anywhere and run the CLI directly.
+> [!CAUTION]
+> Never commit `.env.local` or pass API keys as CLI arguments.
 
-## Commands
-
-```sh
-node chat.mjs --help
+### 3. Verify Connection
+```bash
 node chat.mjs --list
-node chat.mjs --agent 'Agent name or ID' --inspect
-node chat.mjs --agent 'Agent name or ID'
-node chat.mjs --agent 'Agent name or ID' --message 'Hello' --message 'What times are open?' --allow-live
 ```
 
-`--list` and `--inspect` read account and agent configuration without creating a chat. `--inspect` prints the active prompt ID, flow node count, linked function targets, and phone linkage. Without `--agent`, an interactive menu lets you choose an agent. In an interactive chat, type the agent's name to confirm, enter messages, and use `/quit` to end.
+---
 
-Starting a chat creates a persisted Vogent chat record. A turn can invoke linked functions and change backend data; review the targets first and use synthetic data for write tests. For noninteractive chats, `--allow-live` is required. Set `VOGENT_CHAT_TIMEOUT_MS` to change the per-turn timeout (clamped to 5–180 seconds; default 45 seconds).
+## Commands & Usage
 
-This tests typed conversation behavior. It does not test phone audio, speech recognition, interruptions, transfers, or hangup. The GraphQL chat operations were observed in Vogent's dashboard and are not a documented public API contract, so provider changes may require an update.
+### 1. Discover and Inspect Agents
 
-## Status
+```bash
+# List all agents in the account
+node chat.mjs --list
 
-CLI syntax, help output, argument errors, and skill structure passed local checks. The Vogent API and a live chat have not been verified for this public copy; those checks require a credential and can create a chat record or invoke linked functions.
+# Inspect an agent's configuration without starting a chat
+node chat.mjs --agent 'Agent Name or ID' --inspect
+```
+
+Output includes:
+- Agent ID and Name
+- Active versioned prompt ID and flow node count
+- Phone linkage status
+- Linked functions and backend endpoint targets
+
+---
+
+### 2. Interactive Terminal Chat
+
+```bash
+node chat.mjs --agent 'Agent Name or ID'
+```
+
+- When chatting with an agent that may invoke live backend functions, the CLI prompts you to type the agent's name to confirm.
+- Type your messages interactively.
+- Type `/quit` to end the session.
+
+---
+
+### 3. Scripted Multi-Turn Evaluation
+
+Chain multiple `--message` flags to send sequential turns. Each turn is sent only after the agent finishes streaming its response:
+
+```bash
+node chat.mjs \
+  --agent 'Agent Name or ID' \
+  --allow-live \
+  --message "Hi" \
+  --message "What clinic locations do you have?"
+```
+
+#### Example Output:
+```text
+Agent: Medical Scheduler Agent (188872cb-a29f-4dea-9540-769526760644)
+Active prompt: febbc577-39d6-486c-953a-5d248f325e8d; flow nodes: 96
+Chat ID: 35664c12-cab0-49a6-8ad9-852b6a2762f9
+
+[Turn 1] You: Hi
+[Turn 1] Agent: Thanks for calling Kyron Medical. I'm the scheduling assistant. How can I help?
+
+[Turn 2] You: What clinic locations do you have?
+[Turn 2] Agent: We have locations in Sacramento, Granite Bay, and Roseville.
+```
+
+---
+
+### 4. Viewing Session Transcripts & Tool Execution Traces
+
+#### Option A: Auto-Display at End of Chat
+Add `--transcript` (or `--history`) to print the full transcript and tool calls immediately upon completion:
+
+```bash
+node chat.mjs \
+  --agent 'Agent Name or ID' \
+  --allow-live \
+  --message "Hi" \
+  --message "What kinds of visits do you handle?" \
+  --transcript
+```
+
+**Output:**
+```text
+=== Full Session Transcript & Tool Logs ===
+  [1] You: Hi
+  [2] Agent: Thanks for calling Kyron Medical. I'm the scheduling assistant. How can I help?
+  [3] You: What kinds of visits do you handle?
+      ⚡ Function Call: commit_answer({"answer":"The caller is asking what kinds of visits are handled."})
+  [5] Agent: I can help with appointments and questions about our doctors. What would you like to know?
+===========================================
+```
+
+#### Option B: Retrieve Any Past Session by Chat ID
+Retrieve and review past sessions at any time using their Chat ID:
+
+```bash
+# Formatted turn-by-turn transcript and tool calls
+node chat.mjs --chat-id <CHAT_ID>
+
+# Machine-readable JSON output
+node chat.mjs --chat-id <CHAT_ID> --json
+```
+
+---
+
+## Environment Variables & Overrides
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `VOGENT_API_KEY` | Bearer token for api.vogent.ai | Read from `.env.local` |
+| `VOGENT_CHAT_TIMEOUT_MS` | Per-turn WebSocket timeout (5,000 to 180,000 ms) | `45000` (45s) |
+
+---
+
+## Using as an Agent Skill
+
+This repository functions as an autonomous skill for AI coding assistants (such as Antigravity, Codex, Claude Code, or Cursor).
+
+### Installation into Agent Skills Directory
+Clone this repository into your agent's skills directory:
+
+```bash
+# For Codex / Claude Code
+git clone https://github.com/dustindog101/vogent-chat-cli.git ~/.codex/skills/vogent-chat
+
+# For Antigravity / Project-level skills
+git clone https://github.com/dustindog101/vogent-chat-cli.git .agents/skills/vogent-chat
+```
+
+### Self-Setup Capability
+Once installed, you can simply ask your agent:
+> *"Use the vogent-chat skill and set it up for me."*
+
+The agent will automatically:
+1. Verify if `VOGENT_API_KEY` is present.
+2. Ask you for the key if missing.
+3. Save it to `.env.local` securely.
+4. Verify connection by running `node chat.mjs --list` and report your agents.
+
+---
+
+## Limitations (Chat vs Phone Calls)
+
+- **Text Pipeline Only**: The CLI connects to Vogent's text chat pipeline (`createAiChat` & `runChatQueryStream`). It evaluates prompt adherence, state routing, and linked function execution.
+- **Audio & Telephony**: It does **not** exercise Cartesia/ElevenLabs TTS, speech recognition (ASR), background audio streaming, interruption handling, or SIP phone transfers.
