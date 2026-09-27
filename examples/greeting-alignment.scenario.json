@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "name": "greeting and terminal response alignment",
+  "inputs": {
+    "callAgentInput": {
+      "caller_phone": "REPLACE_WITH_AN_ISOLATED_TEST_NUMBER"
+    }
+  },
+  "limits": {
+    "maxTurns": 2,
+    "timeoutMs": 60000
+  },
+  "turns": [
+    {
+      "name": "greeting",
+      "input": "Hello.",
+      "assertions": {
+        "exactText": ["REPLACE_WITH_THE_EXPECTED_GREETING"],
+        "forbiddenText": ["REPLACE_WITH_A_KNOWN_BAD_GREETING"]
+      }
+    },
+    {
+      "name": "terminal response",
+      "input": "No, thank you. Goodbye.",
+      "assertions": {
+        "exactText": ["REPLACE_WITH_THE_EXPECTED_TERMINAL_RESPONSE"]
+      }
+    }
+  ]
+}
