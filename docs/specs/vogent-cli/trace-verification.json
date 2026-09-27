@@ -1,0 +1,51 @@
+{
+  "checkedAt": "2026-09-27T01:41:28.812Z",
+  "query": "query($id: ID!) { aiChat(id:$id) { id transcript { role text functionCalls {id name arguments} nodeTransitionResult {fromNodeId toNodeId result} } } }",
+  "summaries": [
+    {
+      "http": 200,
+      "lines": 5,
+      "roles": [
+        "HUMAN",
+        "AI"
+      ],
+      "functionCallCount": 1,
+      "functionNames": [
+        "commit_answer"
+      ],
+      "transitions": 0,
+      "transitionResults": 0,
+      "sample": "synthetic-staging-1"
+    },
+    {
+      "http": 200,
+      "lines": 10,
+      "roles": [
+        "HUMAN",
+        "AI"
+      ],
+      "functionCallCount": 4,
+      "functionNames": [
+        "commit_answer"
+      ],
+      "transitions": 0,
+      "transitionResults": 0,
+      "sample": "synthetic-staging-2"
+    },
+    {
+      "http": 200,
+      "lines": 3,
+      "roles": [
+        "HUMAN",
+        "AI"
+      ],
+      "functionCallCount": 1,
+      "functionNames": [
+        "commit_answer"
+      ],
+      "transitions": 0,
+      "transitionResults": 0,
+      "sample": "synthetic-staging-3"
+    }
+  ]
+}

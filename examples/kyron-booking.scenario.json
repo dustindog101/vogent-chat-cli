@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "name": "isolated Kyron booking with spoken consent and exact row reconciliation",
+  "inputs": {
+    "callAgentInput": {
+      "caller_phone": "REPLACE_WITH_AN_ISOLATED_TEST_NUMBER"
+    }
+  },
+  "limits": {
+    "maxTurns": 4,
+    "timeoutMs": 90000
+  },
+  "turns": [
+    {
+      "name": "offer",
+      "input": "I would like to schedule an appointment.",
+      "assertions": {
+        "exactText": ["REPLACE_WITH_THE_EXACT_OFFERED_TIME"]
+      }
+    },
+    {
+      "name": "choice",
+      "input": "I'll take the first option.",
+      "assertions": {
+        "exactText": ["REPLACE_WITH_THE_SELECTED_TIME", "Should I book that appointment?"]
+      }
+    },
+    {
+      "name": "confirmation",
+      "input": "Yes, please book that appointment.",
+      "assertions": {
+        "exactText": ["REPLACE_WITH_THE_SELECTED_TIME", "REPLACE_WITH_THE_DOCTOR", "REPLACE_WITH_THE_CLINIC"]
+      }
+    }
+  ],
+  "effects": {
+    "adapter": "kyron-readonly-http",
+    "baseUrl": "http://127.0.0.1:5000",
+    "patientId": 900001,
+    "expectedAppointment": {
+      "patient_id": 900001,
+      "doctor_id": 700001,
+      "slot_id": 410001,
+      "location_code": "FIXTURE",
+      "body_part": "knee",
+      "issue_type": "follow_up",
+      "appointment_time": "2030-06-03T14:00:00+00:00",
+      "formatted_time": "REPLACE_WITH_EXACT_DATABASE_FORMATTED_TIME",
+      "doctor_name": "REPLACE_WITH_THE_FIXTURE_DOCTOR",
+      "location_name": "REPLACE_WITH_THE_FIXTURE_CLINIC",
+      "status": "SCHEDULED"
+    },
+    "speech": {
+      "offerTurn": "offer",
+      "choiceTurn": "choice",
+      "confirmationTurn": "confirmation",
+      "offeredOptions": [
+        {
+          "time": "REPLACE_WITH_EXACT_DATABASE_FORMATTED_TIME",
+          "doctor": "REPLACE_WITH_THE_FIXTURE_DOCTOR",
+          "location": "REPLACE_WITH_THE_FIXTURE_CLINIC"
+        }
+      ],
+      "selectedOptionIndex": 0,
+      "choiceText": "first option",
+      "confirmationPromptText": "Should I book that appointment?",
+      "confirmationText": "Yes"
+    }
+  }
+}

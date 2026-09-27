@@ -1,16 +1,37 @@
 ---
 name: vogent-chat
-description: Use the bundled Vogent text-chat CLI to inspect agents or test their typed conversations and linked functions. Applies to Vogent agent chat checks, not phone or audio tests.
+description: Use when working with this repository's Vogent CLI to inspect an agent, run typed chat or scenarios, diagnose function compatibility, read saved chat traces, or export a historical dial.
 ---
 
-# Vogent text chat
+# Vogent chat development
 
-Use `chat.mjs` in this folder from a terminal with Node.js 22 or newer. Set `VOGENT_API_KEY` in the environment or in an ignored `.env.local` beside the script. Never put the key in a command argument, committed file, or test transcript.
+Use `node chat.mjs --help` for current flags. Use the CLI for provider access; do not write ad hoc GraphQL requests.
+For credential setup and the full command workflow, see [the Vogent chat guide](docs/chat.md).
 
-Before a conversation, run `node chat.mjs --list`, then `node chat.mjs --agent ID --inspect`. The inspection reads the active prompt, flow node count, linked function targets, and phone linkage without creating a chat. Review the function targets and choose a suitable agent and test data before proceeding.
+Inspect the exact agent before any chat or scenario run:
 
-Run `node chat.mjs --agent ID` for an interactive chat. Type the selected agent's name at the confirmation prompt, then enter turns; `/quit` ends the session. For a scripted conversation, pass one `--message 'text'` per turn and `--allow-live` after reviewing the agent. Never infer permission for a live chat or backend write from a request to inspect an agent.
+```sh
+node chat.mjs doctor
+node chat.mjs --agent AGENT_ID --inspect
+node chat.mjs diagnose-tools --agent AGENT_ID
+```
 
-Each chat creates a persisted Vogent chat record; turns can invoke linked functions and change backend data. Record the chat ID, prompt ID, exact turns, responses, and any relevant backend effects. Use synthetic data when exercising write paths. A text chat does not validate speech recognition, audio, interruptions, transfer, or hangup.
+`diagnose-tools` checks prompt/function links and explicit call-input names. It cannot prove chat-runtime support or an endpoint receipt. Read [diagnostics evidence](docs/specs/vogent-cli/diagnostics-evidence.md) when investigating missing tool calls or incomplete trace records. `trace --chat-id ID` reports what the saved chat populated; an internal `commit_answer` call is not proof of a backend request, and missing transitions do not prove that no flow node ran.
 
-The chat GraphQL operations were observed in Vogent's dashboard, not documented as a public API contract. If the CLI stops working, verify the current dashboard behavior before changing requests. Run `node chat.mjs --help` for the current flags.
+Create typed chats only for an authorized isolated target with synthetic inputs. A chat persists and may call linked functions. Use one `--message` per turn and supply application context with `--call-input JSON` when required. For repeatable runs, inspect the scenario file and use:
+
+```sh
+node chat.mjs scenario list
+node chat.mjs scenario run --scenario FILE --agent AGENT_ID --ack-target AGENT_ID
+```
+
+After a timeout or interrupted turn, recover from the same chat before considering another action:
+
+```sh
+node chat.mjs get --chat-id CHAT_ID
+node chat.mjs trace --chat-id CHAT_ID
+```
+
+`send --chat-id ID --agent ID --message TEXT` can continue a locally created session after readback and target/configuration preflight. This path passed local process fixtures; live provider continuation has not been verified. Chats without a matching local session remain unsupported. Never infer successful backend effects from assistant wording or replay an uncertain write before checking the saved chat and relevant backend records.
+
+For a historical voice call, use `node chat.mjs dial export --dial-id DIAL_ID --redact`. Compare its executed-prompt evidence with the current-chat trace while keeping chat and dial capabilities separate.

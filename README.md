@@ -36,3 +36,5 @@ This tests typed conversation behavior. It does not test phone audio, speech rec
 ## Status
 
 CLI syntax, help output, argument errors, and skill structure passed local checks. The Vogent API and a live chat have not been verified for this public copy; those checks require a credential and can create a chat record or invoke linked functions.
+
+Development tooling, evidence limits, and unfinished work: [guide](docs/chat.md), [assessment](docs/assessment.md), and [tickets](docs/issue-tracker.md). The migration remains a draft pending the recorded live verification and review.
