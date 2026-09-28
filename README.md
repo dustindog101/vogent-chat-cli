@@ -178,7 +178,36 @@ The agent will automatically:
 
 ---
 
+## Diagnosing Failures
+
+When a turn fails, the error includes Vogent's close code, elapsed time, the number of stream events received, and any partial text:
+
+```text
+Vogent chat WebSocket failed (code 1006, after 60s, 1 stream events; partial: Who are your doctors?).
+```
+
+- **Close 1006 after ~60s with no reply:** the flow stalled inside Vogent. The turn is usually not saved to the chat record. If the agent's API functions show no request at that moment (check your backend logs), the question-node model most likely tried to call a *linked function* as a tool. Link only the functions your flow's function nodes use, describe them as flow-only (e.g. "Invoked by a flow function node. Never call this tool yourself."), and keep tool-like wording out of question guidance.
+- **Empty reply:** either the call ended (a terminal function node's start message, such as a goodbye, is spoken on phone calls but not streamed in text chat), or a transient platform error. Check whether your end-of-call webhook fired.
+- Raise `VOGENT_CHAT_TIMEOUT_MS` (default 45000, max 180000) to see the close code instead of a local timeout.
+
+## Using It from Another Script
+
+`chat.mjs` only runs the CLI when executed directly, so scripts can import it, e.g. to build scenario tests:
+
+```js
+import { createChat, credential, readChat, sendTurn } from './chat.mjs';
+
+const token = credential();
+const chatId = await createChat(AGENT_ID, token);
+const reply = await sendTurn(chatId, 'Hi, I need an appointment.', token);
+const record = await readChat(chatId, token); // saved transcript
+```
+
+Replies are the agent's spoken text. Decide the next caller line by matching the agent's reply rather than by turn number: flow wording and model phrasing change between runs.
+
 ## Limitations (Chat vs Phone Calls)
 
 - **Text Pipeline Only**: The CLI connects to Vogent's text chat pipeline (`createAiChat` & `runChatQueryStream`). It evaluates prompt adherence, state routing, and linked function execution.
 - **Audio & Telephony**: It does **not** exercise Cartesia/ElevenLabs TTS, speech recognition (ASR), background audio streaming, interruption handling, or SIP phone transfers.
+- **Saved Chat Records Are Partial**: The saved transcript includes the model's internal `commit_answer` calls but not API function calls, their results, or node transitions. To prove a lookup or booking ran, check your backend's request logs. Phone dials (`GET /api/dials/{id}`) do include node transitions.
+

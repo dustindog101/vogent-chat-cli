@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const API = 'https://api.vogent.ai';
 const TURN_TIMEOUT_MS = Math.min(180_000, Math.max(5_000,
@@ -259,9 +259,22 @@ function sendTurn(chatId, text, token) {
         finish(null, lines.join('') || chunks.join(''));
       }
     };
-    ws.onerror = () => finish(new Error('Vogent chat WebSocket failed.'));
+    // A browser-style error event carries no detail; wait for the close event
+    // so the failure reports Vogent's close code, reason and partial output.
+    // A close after ~60s with no reply usually means the flow stalled inside
+    // Vogent (for example the model tried to call a linked function itself).
+    const started = Date.now();
+    let errored = false;
+    ws.onerror = () => { errored = true; };
     ws.onclose = event => {
-      if (!finished) finish(new Error(`Vogent closed the chat connection (${event.code}).`));
+      if (finished) return;
+      const partial = events.map(x => x.transcriptLine?.text || x.text).filter(Boolean).join(' | ');
+      finish(new Error(
+        `Vogent ${errored ? 'chat WebSocket failed' : 'closed the chat connection'} ` +
+        `(code ${event.code}${event.reason ? `, reason ${event.reason}` : ''}, ` +
+        `after ${Math.round((Date.now() - started) / 1000)}s, ${events.length} stream events` +
+        `${partial ? `; partial: ${partial.slice(0, 300)}` : ''}).`,
+      ));
     };
   });
 }
@@ -355,7 +368,12 @@ async function main() {
   }
 }
 
-main().catch(error => {
-  console.error(error.message);
-  process.exit(1);
-});
+export { createChat, credential, readChat, sendTurn };
+
+// Run the CLI only when executed directly, so other scripts can import it.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch(error => {
+    console.error(error.message);
+    process.exit(1);
+  });
+}
